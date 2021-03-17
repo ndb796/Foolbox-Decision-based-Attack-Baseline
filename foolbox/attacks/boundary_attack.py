@@ -158,7 +158,7 @@ class BoundaryAttack(MinimizationAttack):
         bounds = model.bounds
 
         last_query = total_query
-        saved_x_advs = copy.deepcopy(x_advs)
+        saved_x_advs = copy.deepcopy(best_advs)
         
         for step in range(1, self.steps + 1):
             converged = source_steps < self.source_step_convergance
@@ -292,11 +292,11 @@ class BoundaryAttack(MinimizationAttack):
                 break
 
             last_query = total_query
-            saved_x_advs = copy.deepcopy(x_advs)
+            saved_x_advs = copy.deepcopy(best_advs)
             
         tb.close()
         print(f'[Attack finished] (query count: {last_query} / query_limit: {self.query_limit} / simulated query: {total_query})')
-        return restore_type(best_advs)
+        return restore_type(saved_x_advs)
 
 
 class ArrayQueue:
