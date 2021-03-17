@@ -240,7 +240,7 @@ class HopSkipJump(MinimizationAttack):
 
                 x_advs = proposals[minimal_idx]
 
-            if total_query >= self.query_limit:
+            if total_query > self.query_limit:
                 break
             
             last_query = total_query
