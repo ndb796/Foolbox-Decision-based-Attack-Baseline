@@ -3,6 +3,7 @@ from typing_extensions import Literal
 import numpy as np
 import eagerpy as ep
 import logging
+import copy
 
 from ..devutils import flatten
 from ..devutils import atleast_kd
@@ -74,6 +75,7 @@ class BoundaryAttack(MinimizationAttack):
         step_adaptation: float = 1.5,
         tensorboard: Union[Literal[False], None, str] = False,
         update_stats_every_k: int = 10,
+        query_limit: int = 100000,
     ):
         if init_attack is not None and not isinstance(init_attack, MinimizationAttack):
             raise NotImplementedError
@@ -85,6 +87,7 @@ class BoundaryAttack(MinimizationAttack):
         self.step_adaptation = step_adaptation
         self.tensorboard = tensorboard
         self.update_stats_every_k = update_stats_every_k
+        self.query_limit = query_limit
 
     def run(
         self,
@@ -102,6 +105,9 @@ class BoundaryAttack(MinimizationAttack):
 
         criterion = get_criterion(criterion)
         is_adversarial = get_is_adversarial(criterion, model)
+        
+        print('[Attack start for one batch]')
+        total_query = 0
 
         if starting_points is None:
             init_attack: MinimizationAttack
@@ -122,6 +128,7 @@ class BoundaryAttack(MinimizationAttack):
             best_advs = ep.astensor(starting_points)
 
         is_adv = is_adversarial(best_advs)
+        total_query += 1
         if not is_adv.all():
             failed = is_adv.logical_not().float32().sum()
             if starting_points is None:
@@ -150,6 +157,9 @@ class BoundaryAttack(MinimizationAttack):
 
         bounds = model.bounds
 
+        last_query = total_query
+        saved_x_advs = copy.deepcopy(x_advs)
+        
         for step in range(1, self.steps + 1):
             converged = source_steps < self.source_step_convergance
             if converged.all():
@@ -183,10 +193,12 @@ class BoundaryAttack(MinimizationAttack):
             spherical_candidates.dtype == spherical_candidates.dtype
 
             is_adv = is_adversarial(candidates)
+            total_query += 1
 
             spherical_is_adv: Optional[ep.Tensor]
             if check_spherical_and_update_stats:
                 spherical_is_adv = is_adversarial(spherical_candidates)
+                total_query += 1
                 stats_spherical_adversarial.append(spherical_is_adv)
                 # TODO: algorithm: the original implementation ignores those samples
                 # for which spherical is not adversarial and continues with the
@@ -275,7 +287,15 @@ class BoundaryAttack(MinimizationAttack):
 
             tb.histogram("spherical_step", spherical_steps, step)
             tb.histogram("source_step", source_steps, step)
+            
+            if total_query > self.query_limit:
+                break
+
+            last_query = total_query
+            saved_x_advs = copy.deepcopy(x_advs)
+            
         tb.close()
+        print(f'[Attack finished] (query count: {last_query} / query_limit: {self.query_limit} / simulated query: {total_query})')
         return restore_type(best_advs)
 
 
