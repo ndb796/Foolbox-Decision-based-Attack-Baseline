@@ -3,6 +3,7 @@ from typing import Union, Any, Optional, Callable, List
 from typing_extensions import Literal
 
 import math
+import copy
 
 import eagerpy as ep
 import numpy as np
@@ -69,6 +70,7 @@ class HopSkipJump(MinimizationAttack):
         gamma: float = 1.0,
         tensorboard: Union[Literal[False], None, str] = False,
         constraint: Union[Literal["linf"], Literal["l2"]] = "l2",
+        query_limit: int = 100000,
     ):
         if init_attack is not None and not isinstance(init_attack, MinimizationAttack):
             raise NotImplementedError
@@ -80,6 +82,7 @@ class HopSkipJump(MinimizationAttack):
         self.gamma = gamma
         self.tensorboard = tensorboard
         self.constraint = constraint
+        self.query_limit = query_limit
 
         assert constraint in ("l2", "linf")
         if constraint == "l2":
@@ -104,6 +107,9 @@ class HopSkipJump(MinimizationAttack):
         criterion = get_criterion(criterion)
         is_adversarial = get_is_adversarial(criterion, model)
 
+        print('[Attack start for one batch]')
+        total_query = 0
+        
         if starting_points is None:
             init_attack: MinimizationAttack
             if self.init_attack is None:
@@ -121,6 +127,7 @@ class HopSkipJump(MinimizationAttack):
             x_advs = ep.astensor(starting_points)
 
         is_adv = is_adversarial(x_advs)
+        total_query += 1
         if not is_adv.all():
             failed = is_adv.logical_not().float32().sum()
             if starting_points is None:
@@ -136,12 +143,16 @@ class HopSkipJump(MinimizationAttack):
         tb = TensorBoard(logdir=self.tensorboard)
 
         # Project the initialization to the boundary.
-        x_advs = self._binary_search(is_adversarial, originals, x_advs)
-
+        x_advs, binary_cnt = self._binary_search(is_adversarial, originals, x_advs)
+        total_query += binary_cnt
+        
         assert ep.all(is_adversarial(x_advs))
 
         distances = self.distance(originals, x_advs)
 
+        last_query = total_query
+        saved_x_advs = copy.deepcopy(x_advs)
+        
         for step in range(self.steps):
             delta = self.select_delta(originals, distances, step)
 
@@ -150,9 +161,10 @@ class HopSkipJump(MinimizationAttack):
                 min([self.initial_num_evals * math.sqrt(step + 1), self.max_num_evals])
             )
 
-            gradients = self.approximate_gradients(
+            gradients, gradient_cnt = self.approximate_gradients(
                 is_adversarial, x_advs, num_gradient_estimation_steps, delta
             )
+            total_query += gradient_cnt
 
             if self.constraint == "linf":
                 update = ep.sign(gradients)
@@ -168,6 +180,7 @@ class HopSkipJump(MinimizationAttack):
                         x_advs + atleast_kd(epsilons, x_advs.ndim) * update, 0, 1
                     )
                     success = is_adversarial(x_advs_proposals)
+                    total_query += 1
                     epsilons = ep.where(success, epsilons, epsilons / 2.0)
 
                     if ep.all(success):
@@ -181,7 +194,8 @@ class HopSkipJump(MinimizationAttack):
                 assert ep.all(is_adversarial(x_advs))
 
                 # Binary search to return to the boundary.
-                x_advs = self._binary_search(is_adversarial, originals, x_advs)
+                x_advs, binary_cnt = self._binary_search(is_adversarial, originals, x_advs)
+                total_query += binary_cnt
 
                 assert ep.all(is_adversarial(x_advs))
 
@@ -204,10 +218,12 @@ class HopSkipJump(MinimizationAttack):
                     x_advs_proposals = ep.clip(x_advs_proposals, 0, 1)
 
                     mask = is_adversarial(x_advs_proposals)
+                    total_query += 1
 
-                    x_advs_proposals = self._binary_search(
+                    x_advs_proposals, binary_cnt = self._binary_search(
                         is_adversarial, originals, x_advs_proposals
                     )
+                    total_query += binary_cnt
 
                     # only use new values where initial guess was already adversarial
                     x_advs_proposals = ep.where(
@@ -224,12 +240,19 @@ class HopSkipJump(MinimizationAttack):
 
                 x_advs = proposals[minimal_idx]
 
+            if total_query >= self.query_limit:
+                break
+            
+            last_query = total_query
+            saved_x_advs = copy.deepcopy(x_advs)
+
             distances = self.distance(originals, x_advs)
 
             # log stats
             tb.histogram("norms", distances, step)
 
-        return restore_type(x_advs)
+        print(f'[Attack finished] (query count: {last_query} / query_limit: {self.query_limit} / simulated query: {total_query})')
+        return restore_type(saved_x_advs)
 
     def approximate_gradients(
         self,
@@ -238,6 +261,7 @@ class HopSkipJump(MinimizationAttack):
         steps: int,
         delta: ep.Tensor,
     ) -> ep.Tensor:
+        gradient_cnt = 0
         # (steps, bs, ...)
         noise_shape = tuple([steps] + list(x_advs.shape))
         if self.constraint == "l2":
@@ -256,6 +280,7 @@ class HopSkipJump(MinimizationAttack):
         multipliers_list: List[ep.Tensor] = []
         for step in range(steps):
             decision = is_adversarial(perturbed[step])
+            gradient_cnt += 1
             multipliers_list.append(
                 ep.where(
                     decision,
@@ -275,7 +300,8 @@ class HopSkipJump(MinimizationAttack):
 
         grad /= ep.norms.l2(atleast_kd(flatten(grad), grad.ndim)) + 1e-12
 
-        return grad
+        print('Gradient step count:', gradient_cnt)
+        return grad, gradient_cnt
 
     def _project(
         self, originals: ep.Tensor, perturbed: ep.Tensor, epsilons: ep.Tensor
@@ -310,6 +336,7 @@ class HopSkipJump(MinimizationAttack):
         originals: ep.Tensor,
         perturbed: ep.Tensor,
     ) -> ep.Tensor:
+        binary_cnt = 0
         # Choose upper thresholds in binary search based on constraint.
         d = np.prod(perturbed.shape[1:])
         if self.constraint == "linf":
@@ -331,6 +358,7 @@ class HopSkipJump(MinimizationAttack):
             mids = (lows + highs) / 2
             mids_perturbed = self._project(originals, perturbed, mids)
             is_adversarial_ = is_adversarial(mids_perturbed)
+            binary_cnt += 1
 
             highs = ep.where(is_adversarial_, mids, highs)
             lows = ep.where(is_adversarial_, lows, mids)
@@ -341,11 +369,14 @@ class HopSkipJump(MinimizationAttack):
 
             if reached_numerical_precision:
                 # TODO: warn user
+                print('Reached numerical precision!')
                 break
 
         res = self._project(originals, perturbed, highs)
 
-        return res
+        print('Binary step ratio (up to 8 examples):', highs[:8])
+        print('Binary step count:', binary_cnt)
+        return res, binary_cnt
 
     def select_delta(
         self, originals: ep.Tensor, distances: ep.Tensor, step: int
