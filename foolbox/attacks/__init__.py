@@ -52,6 +52,7 @@ from .dataset_attack import DatasetAttack  # noqa: F401
 from .boundary_attack import BoundaryAttack  # noqa: F401
 from .low_frequency_boundary_attack import LowFrequencyBoundaryAttack  # noqa: F401
 from .hop_skip_jump import HopSkipJump  # noqa: F401
+from .low_frequency_hop_skip_jump import LowFrequencyHopSkipJump  # noqa: F401
 from .brendel_bethge import (  # noqa: F401
     L0BrendelBethgeAttack,
     L1BrendelBethgeAttack,
