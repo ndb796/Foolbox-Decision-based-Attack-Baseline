@@ -89,6 +89,7 @@ class LowFrequencyBoundaryAttack(MinimizationAttack):
         self.tensorboard = tensorboard
         self.update_stats_every_k = update_stats_every_k
         self.query_limit = query_limit
+        self.dct_ratio = dct_ratio
 
     def run(
         self,
@@ -189,7 +190,7 @@ class LowFrequencyBoundaryAttack(MinimizationAttack):
                 source_norms,
                 spherical_steps,
                 source_steps,
-                dct_ratio,
+                self.dct_ratio,
             )
             candidates.dtype == originals.dtype
             spherical_candidates.dtype == spherical_candidates.dtype
