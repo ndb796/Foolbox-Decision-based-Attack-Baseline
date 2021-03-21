@@ -84,6 +84,7 @@ class LowFrequencyHopSkipJump(MinimizationAttack):
         constraint: Union[Literal["linf"], Literal["l2"]] = "l2",
         query_limit: int = 100000,
         dct_ratio: float = 0.125,
+        momentum: float = None,
     ):
         if init_attack is not None and not isinstance(init_attack, MinimizationAttack):
             raise NotImplementedError
@@ -97,6 +98,7 @@ class LowFrequencyHopSkipJump(MinimizationAttack):
         self.constraint = constraint
         self.query_limit = query_limit
         self.dct_ratio = dct_ratio
+        self.momentum = momentum
 
         assert constraint in ("l2", "linf")
         if constraint == "l2":
@@ -167,6 +169,8 @@ class LowFrequencyHopSkipJump(MinimizationAttack):
         last_query = total_query
         saved_x_advs = copy.deepcopy(x_advs)
         
+        prev_gradients = None
+        
         for step in range(self.steps):
             delta = self.select_delta(originals, distances, step)
 
@@ -179,6 +183,11 @@ class LowFrequencyHopSkipJump(MinimizationAttack):
                 is_adversarial, x_advs, num_gradient_estimation_steps, delta, self.dct_ratio
             )
             total_query += gradient_cnt
+
+            if self.momentum != None and prev_gradients != None:
+                gradients += self.momentum * prev_gradients
+            if self.momentum != None:
+                prev_gradients = ep.astensor(gradients.raw.cuda())
 
             if self.constraint == "linf":
                 update = ep.sign(gradients)
