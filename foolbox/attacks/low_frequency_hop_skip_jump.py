@@ -37,6 +37,15 @@ def sample_gaussian_torch(image_size, dct_ratio=0.125):
     return x
 
 
+def sample_gaussian_torch_latent(image_size, dct_ratio=0.125):
+    x = torch.zeros(image_size)
+    fill_size = int(image_size[-1] * dct_ratio)
+    x[:, :, :18, :fill_size] = torch.randn(x.size(0), x.size(1), 18, fill_size)
+    if dct_ratio < 1.0:
+        x = torch.from_numpy(idct(idct(x.numpy(), axis=3, norm='ortho'), axis=2, norm='ortho'))
+    return x
+
+
 class LowFrequencyHopSkipJump(MinimizationAttack):
     """A powerful adversarial attack that requires neither gradients
     nor probabilities [#Chen19].
@@ -85,6 +94,7 @@ class LowFrequencyHopSkipJump(MinimizationAttack):
         query_limit: int = 100000,
         dct_ratio: float = 0.125,
         momentum: float = None,
+        is_latent: int = 0,
     ):
         if init_attack is not None and not isinstance(init_attack, MinimizationAttack):
             raise NotImplementedError
@@ -99,6 +109,7 @@ class LowFrequencyHopSkipJump(MinimizationAttack):
         self.query_limit = query_limit
         self.dct_ratio = dct_ratio
         self.momentum = momentum
+        self.is_latent = is_latent
 
         assert constraint in ("l2", "linf")
         if constraint == "l2":
@@ -180,7 +191,7 @@ class LowFrequencyHopSkipJump(MinimizationAttack):
             )
 
             gradients, gradient_cnt = self.approximate_gradients(
-                is_adversarial, x_advs, num_gradient_estimation_steps, delta, self.dct_ratio
+                is_adversarial, x_advs, num_gradient_estimation_steps, delta, self.dct_ratio, self.is_latent
             )
             total_query += gradient_cnt
 
@@ -284,13 +295,18 @@ class LowFrequencyHopSkipJump(MinimizationAttack):
         steps: int,
         delta: ep.Tensor,
         dct_ratio: float = 0.125,
+        is_latent: int = 0,
     ) -> ep.Tensor:
         gradient_cnt = 0
         # (steps, bs, ...)
         noise_shape = tuple([steps] + list(x_advs.shape))
         if self.constraint == "l2":
-            rv = sample_gaussian_torch(noise_shape, dct_ratio)
-            rv = ep.astensor(rv.cuda())
+            if is_latent == 0:
+                rv = sample_gaussian_torch(noise_shape, dct_ratio)
+                rv = ep.astensor(rv.cuda())
+            else:
+                rv = sample_gaussian_torch_latent(noise_shape, dct_ratio)
+                rv = ep.astensor(rv.cuda())
         elif self.constraint == "linf":
             rv = ep.uniform(x_advs, low=-1, high=1, shape=noise_shape)
         rv /= atleast_kd(ep.norms.l2(flatten(rv, keep=1), -1), rv.ndim) + 1e-12
