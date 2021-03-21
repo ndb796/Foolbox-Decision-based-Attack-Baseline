@@ -37,7 +37,7 @@ def sample_gaussian_torch(image_size, dct_ratio=0.125):
     return x
 
 
-class HopSkipJump(MinimizationAttack):
+class LowFrequencyHopSkipJump(MinimizationAttack):
     """A powerful adversarial attack that requires neither gradients
     nor probabilities [#Chen19].
 
