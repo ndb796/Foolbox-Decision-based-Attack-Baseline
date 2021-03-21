@@ -281,7 +281,7 @@ class LowFrequencyHopSkipJump(MinimizationAttack):
         noise_shape = tuple([steps] + list(x_advs.shape))
         if self.constraint == "l2":
             rv = sample_gaussian_torch(noise_shape, dct_ratio)
-            rv = ep.astensor(rv.cuda(0))
+            rv = ep.astensor(rv.cuda())
         elif self.constraint == "linf":
             rv = ep.uniform(x_advs, low=-1, high=1, shape=noise_shape)
         rv /= atleast_kd(ep.norms.l2(flatten(rv, keep=1), -1), rv.ndim) + 1e-12
