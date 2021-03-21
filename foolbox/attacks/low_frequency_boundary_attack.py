@@ -388,7 +388,7 @@ def draw_proposals(
 
     # draw from an low frequency Gaussian (we can share this across the whole batch)
     eta = sample_gaussian_torch((1, perturbed_shape[0], perturbed_shape[1], perturbed_shape[2]), dct_ratio=dct_ratio)
-    eta = ep.astensor(low_eta.view(-1).view(-1, 1).cuda())
+    eta = ep.astensor(eta.view(-1).view(-1, 1).cuda())
 
     # make orthogonal (source_directions are normalized)
     eta = eta.T - ep.matmul(source_directions, eta) * source_directions
