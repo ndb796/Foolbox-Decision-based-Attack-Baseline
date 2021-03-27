@@ -47,6 +47,7 @@ to create a new criterion.
 from typing import TypeVar, Any
 from abc import ABC, abstractmethod
 import eagerpy as ep
+import torch
 
 
 T = TypeVar("T")
