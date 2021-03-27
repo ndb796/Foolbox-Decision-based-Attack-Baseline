@@ -141,3 +141,26 @@ class TargetedMisclassification(Criterion):
         assert classes.shape == self.target_classes.shape
         is_adv = classes == self.target_classes
         return restore_type(is_adv)
+
+
+class TargetedMisclassificationWithProbability(Criterion):
+    def __init__(self, target_classes: Any, prob: Any):
+        super().__init__()
+        self.target_classes: ep.Tensor = ep.astensor(target_classes)
+        self.prob = prob
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.target_classes!r})"
+
+    def __call__(self, perturbed: T, outputs: T) -> T:
+        outputs_, restore_type = ep.astensor_(outputs)
+        del perturbed, outputs
+
+        classes = outputs_.argmax(axis=-1)
+        assert classes.shape == self.target_classes.shape
+        percentages = ep.astensor(torch.nn.functional.softmax(outputs_, dim=-1))
+        one_hot_labels = torch.eye(len(outputs_[0]))[self.target_classes.raw]
+        probs = ep.astensor(torch.masked_select(percentages.raw, one_hot_labels.bool()))
+        compared = ep.astensor(torch.full_like(probs.raw, self.prob))
+        is_adv = ep.astensor(torch.logical_and(classes.raw == self.target_classes.raw, probs.raw >= compared.raw))
+        return restore_type(is_adv)
