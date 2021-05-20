@@ -1,3 +1,11 @@
+def get_distance(a, b):
+    l0 = torch.norm((a - b).view(a.shape[0], -1), p=0, dim=1)
+    l2 = torch.norm((a - b).view(a.shape[0], -1), p=2, dim=1)
+    mse = (a - b).view(a.shape[0], -1).pow(2).mean(1)
+    linf = torch.norm((a - b).view(a.shape[0], -1), p=float('inf'), dim=1)
+    return l0, l2, mse, linf
+
+
 """
 ===============================================================================
 :mod:`foolbox.criteria`
@@ -164,4 +172,22 @@ class TargetedMisclassificationWithProbability(Criterion):
         probs = ep.astensor(torch.masked_select(percentages.raw, one_hot_labels.bool()))
         compared = ep.astensor(torch.full_like(probs.raw, self.prob))
         is_adv = ep.astensor(torch.logical_and(classes.raw == self.target_classes.raw, probs.raw >= compared.raw))
+        return restore_type(is_adv)
+
+
+class TempCriterion(Criterion):
+    def __init__(self, target_images: Any, distance: Any):
+        super().__init__()
+        self.target_images: ep.Tensor = ep.astensor(target_images)
+        self.distance = distance
+
+    def __repr__(self) -> str:
+        return f"Hello World!"
+
+    def __call__(self, perturbed: T, outputs: T) -> T:
+        outputs_, restore_type = ep.astensor_(outputs)
+        del perturbed, outputs
+
+        l0, l2, mse, linf = get_distance(self.target_images, outputs)
+        is_adv = ep.astensor(mse > distance)
         return restore_type(is_adv)
