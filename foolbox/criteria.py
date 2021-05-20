@@ -188,6 +188,6 @@ class TempCriterion(Criterion):
         outputs_, restore_type = ep.astensor_(outputs)
         del perturbed, outputs
 
-        l0, l2, mse, linf = get_distance(self.target_images, outputs_)
+        l0, l2, mse, linf = get_distance(self.target_images.raw, outputs_.raw)
         is_adv = ep.astensor(mse > distance)
         return restore_type(is_adv)
