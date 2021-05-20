@@ -176,10 +176,11 @@ class TargetedMisclassificationWithProbability(Criterion):
 
 
 class TempCriterion(Criterion):
-    def __init__(self, target_images: Any, distance: Any):
+    def __init__(self, target_images: Any, distance: Any, metric: Any):
         super().__init__()
         self.target_images: ep.Tensor = ep.astensor(target_images)
         self.distance = distance
+        self.metric = metric
 
     def __repr__(self) -> str:
         return f"Hello World!"
@@ -190,6 +191,13 @@ class TempCriterion(Criterion):
 
         l0, l2, mse, linf = get_distance(self.target_images.raw, outputs_.raw)
         # print('MSE', mse)
-        is_adv = ep.astensor(mse <= self.distance)
+        if self.metric = 'l0':
+            is_adv = ep.astensor(l0 <= self.distance)
+        elif self.metric = 'l2':
+            is_adv = ep.astensor(l2 <= self.distance)
+        elif self.metric = 'mse':
+            is_adv = ep.astensor(mse <= self.distance)
+        elif self.metric = 'linf':
+            is_adv = ep.astensor(linf <= self.distance)
         # print('is_adv', is_adv)
         return restore_type(is_adv)
