@@ -191,13 +191,13 @@ class TempCriterion(Criterion):
 
         l0, l2, mse, linf = get_distance(self.target_images.raw, outputs_.raw)
         # print('MSE', mse)
-        if self.metric = 'l0':
+        if self.metric == 'l0':
             is_adv = ep.astensor(l0 <= self.distance)
-        elif self.metric = 'l2':
+        elif self.metric == 'l2':
             is_adv = ep.astensor(l2 <= self.distance)
-        elif self.metric = 'mse':
+        elif self.metric == 'mse':
             is_adv = ep.astensor(mse <= self.distance)
-        elif self.metric = 'linf':
+        elif self.metric == 'linf':
             is_adv = ep.astensor(linf <= self.distance)
         # print('is_adv', is_adv)
         return restore_type(is_adv)
